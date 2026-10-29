@@ -5,8 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'Orbit_Professional_Responsive_Update_v1.0.2.zip'
-      - 'Orbit_Fresh_Android_Project_v3.zip'
+      - 'Orbit_Responsive_Fixed_Source_v1.1.zip'
       - '.github/workflows/main.yml'
 
 permissions:
@@ -20,50 +19,48 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK packages
+      - name: Extract new source ZIP
         run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -x "$SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+          mkdir -p source
+          unzip -q Orbit_Responsive_Fixed_Source_v1.1.zip -d source
+          echo "Files inside ZIP:"
+          find source -maxdepth 4 -type f | head -200
+          echo "Searching for Gradle project..."
+          find source -type f \( -name settings.gradle -o -name settings.gradle.kts \)
 
-      - name: Select project ZIP
+      - name: Locate Android project
         id: project
-        shell: bash
         run: |
-          if [ -f Orbit_Professional_Responsive_Update_v1.0.2.zip ]; then
-            echo "zip=Orbit_Professional_Responsive_Update_v1.0.2.zip" >> "$GITHUB_OUTPUT"
-          elif [ -f Orbit_Fresh_Android_Project_v3.zip ]; then
-            echo "zip=Orbit_Fresh_Android_Project_v3.zip" >> "$GITHUB_OUTPUT"
-          else
-            echo "Orbit project ZIP not found" >&2
+          SETTINGS=$(find source -type f \( -name settings.gradle -o -name settings.gradle.kts \) | head -1)
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: No Android Gradle project found in ZIP."
+            echo "The ZIP structure must be checked before building an APK."
             exit 1
           fi
-
-      - name: Extract Android project
-        run: |
-          unzip -o "${{ steps.project.outputs.zip }}" -d extracted
-          test -f extracted/TimeOrbit_Fresh/settings.gradle
-          test -f extracted/TimeOrbit_Fresh/app/build.gradle
+          echo "dir=$(dirname "$SETTINGS")" >> "$GITHUB_OUTPUT"
 
       - name: Build debug APK
-        working-directory: extracted/TimeOrbit_Fresh
-        run: gradle --no-daemon assembleDebug
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Orbit-Android-APK-v1.0.2
-          path: extracted/TimeOrbit_Fresh/app/build/outputs/apk/debug/app-debug.apk
+          name: Orbit-APK
+          path: source/**/build/outputs/apk/debug/*.apk
           if-no-files-found: error
