@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'Orbit_Fresh_Android_Project_v2.zip'
+      - 'Orbit_Fresh_Android_Project_v3.zip'
       - '.github/workflows/main.yml'
 
 permissions:
@@ -30,23 +30,27 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Extract project ZIP
+      - name: Install Android SDK packages
         run: |
-          unzip -o Orbit_Fresh_Android_Project_v2.zip -d extracted
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Extract Android project ZIP
+        run: |
+          unzip -o Orbit_Fresh_Android_Project_v3.zip -d extracted
           test -f extracted/TimeOrbit_Fresh/settings.gradle
           test -f extracted/TimeOrbit_Fresh/app/build.gradle
 
-      - name: Build APK
+      - name: Build debug APK
         working-directory: extracted/TimeOrbit_Fresh
         run: gradle --no-daemon assembleDebug
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Orbit-Android-APK
