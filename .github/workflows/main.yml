@@ -8,7 +8,7 @@ on:
       - main
       - master
     paths:
-      - 'Orbit_Responsive_Fixed_Source_v1.1.zip'
+      - 'Orbit_Responsive_Fixed_Source_v1.3_BridgeFix.zip'
       - '.github/workflows/main.yml'
 
 permissions:
@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Orbit Android APK
     runs-on: ubuntu-latest
 
     steps:
@@ -29,12 +29,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle 8.9
+      - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
-      - name: Check Android SDK
+      - name: Locate Android SDK tools
         shell: bash
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
@@ -47,48 +47,78 @@ jobs:
           fi
           echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
 
-      - name: Accept SDK licenses and install packages
+      - name: Install Android SDK packages
         shell: bash
         run: |
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
           "$SDKMANAGER" --install \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Extract latest Orbit source
+      - name: Extract v1.3 source
         shell: bash
         run: |
-          test -f Orbit_Responsive_Fixed_Source_v1.1.zip
+          ZIP="Orbit_Responsive_Fixed_Source_v1.3_BridgeFix.zip"
+          test -f "$ZIP"
           mkdir -p source
-          unzip -q Orbit_Responsive_Fixed_Source_v1.1.zip \
-            -d source
+          unzip -q "$ZIP" -d source
+          echo "ZIP extracted. Searching for Gradle project..."
 
-          test -f source/settings.gradle
-          test -f source/build.gradle
-          test -f source/app/build.gradle
-          test -f source/app/src/main/AndroidManifest.xml
+          SETTINGS="$(find source -type f \
+            \( -name settings.gradle -o -name settings.gradle.kts \) \
+            -print -quit)"
 
-          echo "Source project verified."
-          echo "Project files:"
-          find source -maxdepth 2 -type f | sort
+          if [ -z "$SETTINGS" ]; then
+            echo "ERROR: No Gradle settings file found in the ZIP."
+            find source -maxdepth 5 -type f | sort | head -200
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS")"
+
+          if [ ! -f "$PROJECT_DIR/app/src/main/AndroidManifest.xml" ]; then
+            echo "ERROR: Android app manifest not found."
+            find source -maxdepth 6 -type f | sort | head -200
+            exit 1
+          fi
+
+          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && \
+             [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
+            echo "ERROR: App Gradle build file not found."
+            exit 1
+          fi
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Android project located at: $PROJECT_DIR"
 
       - name: Build debug APK
-        working-directory: source
-        run: gradle --no-daemon assembleDebug
-
-      - name: Verify APK
         shell: bash
         run: |
-          APK="source/app/build/outputs/apk/debug/app-debug.apk"
-          test -s "$APK"
-          echo "APK successfully created:"
-          ls -lh "$APK"
+          cd "$PROJECT_DIR"
+          gradle --no-daemon assembleDebug
+
+      - name: Find and verify APK
+        shell: bash
+        run: |
+          APK="$(find "$PROJECT_DIR" -type f \
+            -path '*/build/outputs/apk/*/*.apk' \
+            -print -quit)"
+
+          if [ -z "$APK" ] || [ ! -s "$APK" ]; then
+            echo "ERROR: APK was not created."
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/apk-output"
+          cp "$APK" "$GITHUB_WORKSPACE/apk-output/Orbit-debug.apk"
+          ls -lh "$GITHUB_WORKSPACE/apk-output/Orbit-debug.apk"
 
       - name: Upload Orbit APK
         uses: actions/upload-artifact@v4
         with:
-          name: Orbit-Responsive-v1.1-APK
-          path: source/app/build/outputs/apk/debug/app-debug.apk
+          name: Orbit-v1.3-BridgeFix-APK
+          path: apk-output/Orbit-debug.apk
           if-no-files-found: error
           retention-days: 30
+          
