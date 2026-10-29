@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'Orbit_Professional_Responsive_Update_v1.0.2.zip'
       - 'Orbit_Fresh_Android_Project_v3.zip'
       - '.github/workflows/main.yml'
 
@@ -32,17 +33,27 @@ jobs:
 
       - name: Install Android SDK packages
         run: |
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          fi
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           test -x "$SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Extract Android project ZIP
+      - name: Select project ZIP
+        id: project
+        shell: bash
         run: |
-          unzip -o Orbit_Fresh_Android_Project_v3.zip -d extracted
+          if [ -f Orbit_Professional_Responsive_Update_v1.0.2.zip ]; then
+            echo "zip=Orbit_Professional_Responsive_Update_v1.0.2.zip" >> "$GITHUB_OUTPUT"
+          elif [ -f Orbit_Fresh_Android_Project_v3.zip ]; then
+            echo "zip=Orbit_Fresh_Android_Project_v3.zip" >> "$GITHUB_OUTPUT"
+          else
+            echo "Orbit project ZIP not found" >&2
+            exit 1
+          fi
+
+      - name: Extract Android project
+        run: |
+          unzip -o "${{ steps.project.outputs.zip }}" -d extracted
           test -f extracted/TimeOrbit_Fresh/settings.gradle
           test -f extracted/TimeOrbit_Fresh/app/build.gradle
 
@@ -53,5 +64,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Orbit-Android-APK
+          name: Orbit-Android-APK-v1.0.2
           path: extracted/TimeOrbit_Fresh/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
